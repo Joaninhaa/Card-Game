@@ -1,3 +1,4 @@
+from tkinter import E
 import pygame
 from random import choice
 
@@ -16,12 +17,14 @@ DARKRED = (180, 60, 80)
 FPS = 60
 TAM = 32
 RES = [900//TAM*TAM, 600//TAM*TAM]
-CARDNAMES = ["defense", "heal"]
+CARDNAMES = ["defense", "heal", "attack"]
 CARDS = {
     #name : [heal, damage, defense, cost]
-    "defense": [0, 0, 2, 1],
-    "heal" : [2, 0, 0, 1]
+    "defense": [0, 0, 1, 1],
+    "heal" : [1, 0, 0, 1],
+    "attack": [0, 1, 0, 1]
 }
+handle = False
 
 class Button():
     def __init__(self, y, text, width=TAM*3, height=TAM):
@@ -38,20 +41,45 @@ class Button():
 
         surf.blit(txt, (self.x, self.y))
     
-    def clickCheck(self):
-        if pygame.mouse.get_pressed()[0] and self.rect.collidepoint(pygame.mouse.get_pos()):
-            print(f'Uau vc clicou em {self.text}')
+    def clickCheck(self, player, enemy):
+        global handle
+        
+        if pygame.mouse.get_pressed()[0] and self.rect.collidepoint(pygame.mouse.get_pos()) and not handle:
+            if self.text == "Pass Turn":
+                player.turn = False
+            elif self.text == "Attack":
+                enemy.health -= (player.damage - enemy.defense)
+                if enemy.defense - player.damage < 0:
+                    enemy.defense = 0
+                else:
+                    enemy.defense -= player.damage
+                player.turn = False
+
+            handle = True
+
+        if not pygame.mouse.get_pressed()[0]:
+            handle = False
+
 
 class Enemy():
     def __init__(self, x, y, width=TAM, height=TAM*2):
         self.health = 5
         self.damage = 1
         self.defense = 0
+
         self.x = x
         self.y = y
         self.width = width
         self.height = height
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+
+        self.deck = Deck()
+        self.deck.newCards(3)
+
+    def lose(self):
+        if self.health <= 0:
+            print("Vc ganhou")
+
     
     def drawHUD(self, font, surf):
         txtHealth = font.render(str(self.health), True, GREEN)
@@ -64,6 +92,13 @@ class Enemy():
         pygame.draw.rect(surf, DARKRED, self.rect)
         self.drawHUD(font, surf)
 
+    def play(self):
+        card = choice(self.deck.cards)
+        self.health += card.heal
+        self.damage += card.damage
+        self.defense += card.defense
+        self.deck.cards.remove(card)
+        
 
 class Player():
     def __init__(self, x, y, width=TAM, height=TAM*2):
@@ -131,14 +166,19 @@ class Card():
         self.rect.height = self.height
     
     def clickCheck(self, player, deck):
-        if pygame.mouse.get_pressed()[0] and self.rect.collidepoint(pygame.mouse.get_pos()):
+        global handle
+        if (pygame.mouse.get_pressed()[0] and self.rect.collidepoint(pygame.mouse.get_pos()) and handle == False):
             if player.mana > self.cost and player.turn:
                 player.mana -= self.cost
                 player.health += self.heal
                 player.damage += self.damage
                 player.defense += self.defense
                 deck.cards.remove(self)
-
+            handle = True
+                
+        if pygame.mouse.get_pressed()[0] == False:
+            handle = False
+    
 
 class Deck():
     def __init__(self):
@@ -160,23 +200,34 @@ class Deck():
 
 
  
-def hud(font, surf, clock):
+def hud(font, surf, clock, player):
     txtFps = font.render("Fps: " +  str(int(clock.get_fps())), True, WHITE)
+    if player.turn:
+        color = PURPLE
+        i = "PLAYER"
+    else:
+        color = DARKRED
+        i = "ENEMY"
+    txtTurn = font.render('Turn: ' + i, True, color)
 
     surf.blit(txtFps, (0, 0))
+    surf.blit(txtTurn, (RES[0]//2-txtTurn.get_width()//2, 0))
                 
 
 def main():
     run = True
 
     player = Player(TAM*5, TAM*7)
+    roundEnemy = None
 
     enemy = Enemy(TAM*20, TAM*7)
+    
 
     deck = Deck()
     myFont = pygame.font.SysFont("Comic Sans MS", TAM//2)
     
     btnPassTurn = Button(RES[1]-TAM*3, "Pass Turn")
+    btnAttack = Button((RES[1]-TAM*2)+5, "Attack")
 
     win = pygame.display.set_mode((RES[0], RES[1]))
     pygame.display.set_caption("AYAYAYAYAY :3")
@@ -195,21 +246,33 @@ def main():
                 if event.key == pygame.K_p:
                     deck.newCards(3)
 
-        
+
+        hud(myFont, win, clock, player)
+
+
         player.drawHud(myFont, win)
         player.draw(win)
-
+        
         enemy.draw(myFont, win)
+        
+        if player.turn:
+            btnPassTurn.draw(win, myFont)
+            btnPassTurn.clickCheck(player, enemy)
 
-        hud(myFont, win, clock)
+            btnAttack.draw(win, myFont)
+            btnAttack.clickCheck(player, enemy)
 
-        btnPassTurn.draw(win, myFont)
-        btnPassTurn.clickCheck()
 
-        deck.displayCards(win)
-        for card in deck.cards:
-            card.drawHUD(myFont, win)
-            card.clickCheck(player, deck)
+            deck.displayCards(win)
+            for card in deck.cards:
+                card.drawHUD(myFont, win)
+                card.clickCheck(player, deck)
+        else:
+                enemy.deck.newCards(1)
+                enemy.play()
+                print('Ele jogou uiiiiiii ' + str(len(enemy.deck.cards)))
+                player.turn = True
+                deck.newCards(1)
 
         pygame.display.update()
         clock.tick(FPS)
